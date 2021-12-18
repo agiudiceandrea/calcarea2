@@ -38,7 +38,7 @@ from qgis.core import (
     QgsMapLayerType, QgsWkbTypes,
     QgsDistanceArea,
     QgsUnitTypes,
-    QgsCoordinateReferenceSystem, QgsCoordinateTransform,
+    QgsCoordinateTransform,
     QgsProject,
     QgsTextAnnotation, QgsMarkerSymbol, QgsFillSymbol,
 )
@@ -339,12 +339,16 @@ class ChangeGeometryEvent(BaseEvent):
 
 
 class CalcAreaEvent(QObject):
-    def __init__(self, mapCanvas):
+    def __init__(self, iface):
         super().__init__()
-        self.mapCanvas = mapCanvas
+        self.mapCanvas = iface.mapCanvas()
+        self.iface = iface
         self.addFeatureEvent = None
         self.changeGeometryEvent =  None
         self.hasEnable = False
+
+    def __del__(self):
+        self.iface.currentLayerChanged.disconnect( self.currentLayerChanged )
 
     def init(self, crs, unitArea, unitLength):
         args = {
@@ -357,6 +361,7 @@ class CalcAreaEvent(QObject):
         self.addFeatureEvent = AddFeatureEvent( **args )
         self.changeGeometryEvent = ChangeGeometryEvent( **args )
         self.mapCanvas.mapToolSet.connect( self.changeMapTool )
+        self.iface.currentLayerChanged.connect( self.currentLayerChanged )
         self.hasEnable = True
 
         # Enable if current tool is Edit
@@ -364,6 +369,7 @@ class CalcAreaEvent(QObject):
 
     def disable(self):
         self.mapCanvas.mapToolSet.disconnect( self.changeMapTool )
+        self.iface.currentLayerChanged.disconnect( self.currentLayerChanged )
 
         if self.addFeatureEvent.hasFilter:
             self.addFeatureEvent.toggleFilter()
@@ -395,7 +401,7 @@ class CalcAreaEvent(QObject):
             disableFeatures()
             return
 
-        if not self._isValidLayer():
+        if not self._isValidLayer( self.mapCanvas.currentLayer() ):
             disableFeatures()
             return
 
@@ -410,8 +416,13 @@ class CalcAreaEvent(QObject):
         if not self.addFeatureEvent.hasFilter:
             self.addFeatureEvent.toggleFilter()
 
-    def _isValidLayer(self):
-        layer = self.mapCanvas.currentLayer()
+    @pyqtSlot('QgsMapLayer*')
+    def currentLayerChanged(self, layer):
+        if self._isValidLayer( layer ) and self.changeGeometryEvent.hasConnect:
+            self.changeGeometryEvent.disable()
+            self.changeGeometryEvent.enable( layer )
+
+    def _isValidLayer(self, layer):
         return \
             False if \
                 layer is None or \

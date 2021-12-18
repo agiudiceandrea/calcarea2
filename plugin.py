@@ -68,7 +68,7 @@ class CalcAreaPlugin(QObject):
         self.titleTool = self.tr('Show the area and length of layer')
 
         self.tool = QgsMapTool( iface.mapCanvas() )
-        self.toolEvent = CalcAreaEvent( iface.mapCanvas() )
+        self.toolEvent = CalcAreaEvent( iface )
 
     def initGui(self):
         def createAction(icon, title, calback, toolTip=None, isCheckable=False):
