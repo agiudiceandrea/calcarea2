@@ -1,7 +1,8 @@
+# -*- coding: utf-8 -*-
 """
 /***************************************************************************
 Name                 : Calc Area 2.
-Description          : Show the area and length when edit vector layer
+Description          : Show layer area and length when editing
 Date                 : December, 2021
 copyright            : (C) 2021 by Luiz Motta
 email                : motta.luiz@gmail.com
@@ -43,7 +44,7 @@ from .messageoutputhtml import messageOutputHtml
 
 from .calcareaevent import CalcAreaEvent
 
-# from .dialog_setup import DialogSetup
+from .dialog_setup import DialogSetup
 
 
 class CalcAreaPlugin(QObject):
@@ -53,8 +54,9 @@ class CalcAreaPlugin(QObject):
         self.pluginName = 'Calc Area'
         self.iface = iface
         self.settings = {
-            'crs': None,
-            'measure': { 'unit_area': None, 'init_length': None}
+            'crs': QgsCoordinateReferenceSystem('EPSG:900913'),
+            'unitArea': QgsUnitTypes.AreaHectares,
+            'unitLength': QgsUnitTypes.DistanceMeters
         }
 
         self.translate = Translate( type(self).__name__ )
@@ -65,7 +67,7 @@ class CalcAreaPlugin(QObject):
         self.toolButton.setMenu( QMenu() )
         self.toolButton.setPopupMode( QToolButton.MenuButtonPopup )
         self.toolBtnAction = self.iface.addToolBarWidget( self.toolButton )
-        self.titleTool = self.tr('Show the area and length of layer')
+        self.titleTool = self.tr('Show layer area and length when editing')
 
         self.tool = QgsMapTool( iface.mapCanvas() )
         self.toolEvent = CalcAreaEvent( iface )
@@ -82,9 +84,7 @@ class CalcAreaPlugin(QObject):
 
         # Action Tool
         icon = QIcon( os.path.join( os.path.dirname(__file__), 'resources', 'calcarea.svg' ) )
-        toolTip = self.tr('Only for editable layers.')
-        toolTip = f"{self.titleTool}. *{toolTip}"
-        self.actions['tool'] = createAction( icon, self.titleTool, self.runTool, toolTip, True )
+        self.actions['tool'] = createAction( icon, self.titleTool, self.runTool, self.titleTool, True )
         self.tool.setAction( self.actions['tool'] )
         # Action setFields
         title = self.tr('Setup...')
@@ -112,29 +112,25 @@ class CalcAreaPlugin(QObject):
     def runTool(self, checked):
         if checked:
             if not self.toolEvent.hasEnable:
-                args = {
-                    'crs': QgsCoordinateReferenceSystem('EPSG:5641'),
-                    'unitArea': QgsUnitTypes.AreaHectares,
-                    'unitLength': QgsUnitTypes.DistanceMeters
-                }
-                self.toolEvent.init( **args)
+                self.toolEvent.init( **self.settings )
             return
-        
+
         self.toolEvent.disable()
 
     @pyqtSlot(bool)
     def runSetup(self, checked):
-        pass
-        # layer = self.iface.activeLayer()
-        # args = (
-        #     self.iface.mainWindow(),
-        #     self.pluginName
-        # )
-        # dlg = DialogSetup( *args )
-        # if self.currentCrs:
-        #     dlg.setCurrentCrs( self.currentCrs )
-        # if dlg.exec_() == dlg.Accepted:
-        #     self.currentCrs = dlg.currentCrs()
+        layer = self.iface.mapCanvas().currentLayer()
+        if not layer is None:
+            crs = layer.crs()
+            if not crs.isGeographic():
+                self.settings['crs'] = crs
+
+        args = self.settings.copy()
+        args['parent'] = self.iface.mainWindow()
+        args['title'] = self.pluginName
+        dlg = DialogSetup( **args )
+        if dlg.exec_() == dlg.Accepted:
+            self.settings = dlg.currentData()
 
     @pyqtSlot(bool)
     def runAbout(self, checked):

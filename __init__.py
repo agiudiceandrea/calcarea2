@@ -2,7 +2,7 @@
 """
 /***************************************************************************
 Name                 : Calc Area 2.
-Description          : Show the area and length when edit vector layer
+Description          : Show layer area and length when editing
 Date                 : December, 2021
 copyright            : (C) 2021 by Luiz Motta
 email                : motta.luiz@gmail.com

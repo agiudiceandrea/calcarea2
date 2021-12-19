@@ -1,7 +1,8 @@
+# -*- coding: utf-8 -*-
 """
 /***************************************************************************
 Name                 : Calc Area 2.
-Description          : Show the area and length when edit vector layer
+Description          : Show layer area and length when editing
 Date                 : December, 2021
 copyright            : (C) 2021 by Luiz Motta
 email                : motta.luiz@gmail.com
@@ -346,9 +347,6 @@ class CalcAreaEvent(QObject):
         self.addFeatureEvent = None
         self.changeGeometryEvent =  None
         self.hasEnable = False
-
-    def __del__(self):
-        self.iface.currentLayerChanged.disconnect( self.currentLayerChanged )
 
     def init(self, crs, unitArea, unitLength):
         args = {

@@ -1,7 +1,7 @@
 [general]
 name:Calc area 2
-description:Show the area and length when edit vector layer.
-about:When edit vector layer the annotation  is show with area and perimeter.
+description:Show layer area and length when editing.
+about:When edit vector layer the annotation is show with area and perimeter.
      <b>The Tool work when the current layer is a polygon type and editable.</b>
 
      This plugin replace the CalcArea from nikolaus batlogg.
