@@ -189,6 +189,10 @@ class BaseEvent(QObject):
         area = data.area()
         return createString( length, area )
 
+    def setCrsUnit(self, crs, unitArea, unitLength):
+        self.unitArea, self.unitLength = unitArea, unitLength
+        self.measure.setSourceCrs( crs, self.project.transformContext() )
+
     @pyqtSlot(QObject, QEvent)
     def eventFilter(self, watched, event):
         pass # Virtual
@@ -364,6 +368,10 @@ class CalcAreaEvent(QObject):
 
         # Enable if current tool is Edit
         self.changeMapTool( self.mapCanvas.mapTool(), None )
+
+    def setCrsUnit(self, crs, unitArea, unitLength):
+        self.changeGeometryEvent.setCrsUnit( crs, unitArea, unitLength )
+        self.addFeatureEvent.setCrsUnit( crs, unitArea, unitLength )
 
     def disable(self):
         self.mapCanvas.mapToolSet.disconnect( self.changeMapTool )

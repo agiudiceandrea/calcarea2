@@ -58,7 +58,6 @@ class CalcAreaPlugin(QObject):
             'unitArea': QgsUnitTypes.AreaHectares,
             'unitLength': QgsUnitTypes.DistanceMeters
         }
-
         self.translate = Translate( type(self).__name__ )
         self.tr = self.translate.tr
 
@@ -131,6 +130,8 @@ class CalcAreaPlugin(QObject):
         dlg = DialogSetup( **args )
         if dlg.exec_() == dlg.Accepted:
             self.settings = dlg.currentData()
+            if self.toolEvent.hasEnable:
+                self.toolEvent.setCrsUnit( **self.settings )
 
     @pyqtSlot(bool)
     def runAbout(self, checked):
