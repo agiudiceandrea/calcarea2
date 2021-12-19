@@ -81,8 +81,8 @@ class DialogSetup(QDialog):
     def currentData(self):
         return {
             'crs': self.psCrs.crs(),
-            'unitLength': self.cmbUnitLength.currentData(),
-            'unitArea': self.cmbUnitArea.currentData()
+            'unitLength':  QgsUnitTypes.DistanceUnit( self.cmbUnitLength.currentData() ),
+            'unitArea': QgsUnitTypes.AreaUnit( self.cmbUnitArea.currentData() )
         }
 
     def _layoutCrs(self, crs):
