@@ -66,7 +66,7 @@ class CalcAreaPlugin(QObject):
         self.toolButton.setMenu( QMenu() )
         self.toolButton.setPopupMode( QToolButton.MenuButtonPopup )
         self.toolBtnAction = self.iface.addToolBarWidget( self.toolButton )
-        self.titleTool = self.tr('Show layer area and length when editing')
+        self.titleTool = self.tr('CalcArea2 - Show layer area and length when editing')
 
         self.tool = QgsMapTool( iface.mapCanvas() )
         self.toolEvent = CalcAreaEvent( iface )
@@ -78,17 +78,17 @@ class CalcAreaPlugin(QObject):
                 action.setToolTip( toolTip )
             action.triggered.connect( calback )
             action.setCheckable( isCheckable )
-            self.iface.addPluginToMenu( f"&{self.titleTool}" , action )
+            self.iface.addPluginToVectorMenu( f"&{self.titleTool}" , action )
             return action
 
         # Action Tool
         icon = QIcon( os.path.join( os.path.dirname(__file__), 'resources', 'calcarea.svg' ) )
         self.actions['tool'] = createAction( icon, self.titleTool, self.runTool, self.titleTool, True )
         self.tool.setAction( self.actions['tool'] )
-        # Action setFields
+        # Action Setup
         title = self.tr('Setup...')
         icon = QgsApplication.getThemeIcon('/propertyicons/general.svg')
-        self.actions['measure_field'] = createAction( icon, title, self.runSetup )
+        self.actions['setup'] = createAction( icon, title, self.runSetup )
         # Action About
         title = self.tr('About...')
         icon = QgsApplication.getThemeIcon('/mActionHelpContents.svg')
@@ -102,7 +102,7 @@ class CalcAreaPlugin(QObject):
     def unload(self):
         for k in self.actions:
             action = self.actions[ k ]
-            self.iface.removePluginMenu( f"&{self.titleTool}", action )
+            self.iface.removePluginVectorMenu( f"&{self.titleTool}", action )
             self.iface.removeToolBarIcon( action )
             self.iface.unregisterMainWindowAction( action )
         self.iface.removeToolBarIcon( self.toolBtnAction )
@@ -121,7 +121,7 @@ class CalcAreaPlugin(QObject):
         layer = self.iface.mapCanvas().currentLayer()
         if not layer is None:
             crs = layer.crs()
-            if not crs.isGeographic():
+            if crs.isValid() and not crs.isGeographic():
                 self.settings['crs'] = crs
 
         args = self.settings.copy()
