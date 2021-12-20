@@ -135,7 +135,6 @@ class CalcAreaPlugin(QObject):
 
     @pyqtSlot(bool)
     def runAbout(self, checked):
-        pass
         title = self.tr('{} - About')
         title = title.format( self.pluginName )
         args = {

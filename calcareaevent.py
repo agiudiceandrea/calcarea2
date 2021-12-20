@@ -145,15 +145,13 @@ class BaseEvent(QObject):
             f = obj.removeEventFilter if self.hasFilter else obj.installEventFilter
             f( self )
 
+        if self.objsToggleFilter is None:
+            return
+
         for obj in self.objsToggleFilter:
             toggle( obj )
 
         self.hasFilter = not self.hasFilter
-
-    def event_close(self):
-        if self.hasFilter:
-            self.toggleFilter()
-        self.annotationCanvas.remove()
 
     def event_key_release_toggle(self):
         self.annotationCanvas.toggle()
@@ -219,10 +217,6 @@ class AddFeatureEvent(BaseEvent):
             label = self.stringMeasures( points )
             self.annotationCanvas.setText( label, xyPoint )
 
-        def event_close():
-            self.event_close() # Base class
-            self.points.clear()
-
         def event_mouse_move():
             if len( self.points ) < 2:
                 return
@@ -239,7 +233,7 @@ class AddFeatureEvent(BaseEvent):
                 self.points.append( self._transformPoint( xyCursor() ) )
 
             def rightPress():
-                self._cleanAnnotation()
+                self.clear()
 
             btn = event.button()
             d = {
@@ -250,25 +244,11 @@ class AddFeatureEvent(BaseEvent):
                 d[ btn ]()
 
         def event_key_release():
-            def toggle():
-                self.event_key_release_toggle()
-                if self.showAnotation and len( self.points ) > 2:
-                    showMeasure( self.lastPoint )
-
-            def escape():
-                self._cleanAnnotation()
-
-            k = event.key()
-            d = {
-                Qt.Key_T: toggle,
-                Qt.Key_Escape: escape
-            }
-            if k in d:
-                d[ k ]()
+            if event.key() == Qt.Key_Escape:
+                self.clear()
 
         e_type = event.type()
         d = {
-            QEvent.Close: event_close,
             QEvent.MouseMove: event_mouse_move,
             QEvent.MouseButtonRelease: event_mouse_release,
             QEvent.KeyRelease: event_key_release
@@ -282,7 +262,7 @@ class AddFeatureEvent(BaseEvent):
         ct = QgsCoordinateTransform( self.project.crs(), self.measure.sourceCrs(), self.project )
         return ct.transform( pointXY )
 
-    def _cleanAnnotation(self):
+    def clear(self):
         self.annotationCanvas.remove()
         self.points.clear()
 
@@ -290,9 +270,7 @@ class AddFeatureEvent(BaseEvent):
 class ChangeGeometryEvent(BaseEvent):
     def __init__(self,  mapCanvas, crs, key_toggle, unitArea, unitLength):
         super().__init__( mapCanvas, crs, key_toggle, unitArea, unitLength )
-        self.objsToggleFilter = (
-            mapCanvas, # Keyboard
-        )
+        # NOT filterEvent: self.objsToggleFilter = None and self.hasFilter = False - BASE class
         self.lastMessage = None
         self.hasConnect = False
         self.layer = None
@@ -302,36 +280,11 @@ class ChangeGeometryEvent(BaseEvent):
         self.hasConnect = True
         layer.geometryChanged.connect( self.geometryChanged )
         self.ct = QgsCoordinateTransform( layer.sourceCrs(), self.measure.sourceCrs(), self.project )
-        if not self.hasFilter:
-            self.toggleFilter()
 
     def disable(self):
         self.hasConnect = False
         self.layer.geometryChanged.disconnect( self.geometryChanged )
         self.annotationCanvas.remove()
-        if self.hasFilter:
-            self.toggleFilter()
-
-    @pyqtSlot(QObject, QEvent)
-    def eventFilter(self, watched, event):
-        def event_key_release():
-            def toggle():
-                self.event_key_release_toggle()
-                if self.showAnotation:
-                    self.annotationCanvas.setText( self.lastMessage, self.lastPoint )
-
-            if event.key() == Qt.Key_T:
-                toggle()
-
-        e_type = event.type()
-        d = {
-            QEvent.Close: self.event_close,
-            QEvent.KeyRelease: event_key_release
-        }
-        if e_type in d:
-            d[ e_type ]()
-        
-        return False
 
     @pyqtSlot('QgsFeatureId', QgsGeometry)
     def geometryChanged(self, fid, geometry):
@@ -379,6 +332,7 @@ class CalcAreaEvent(QObject):
 
         if self.addFeatureEvent.hasFilter:
             self.addFeatureEvent.toggleFilter()
+            self.addFeatureEvent.clear()
         self.addFeatureEvent = None
 
         if self.changeGeometryEvent.hasConnect:
