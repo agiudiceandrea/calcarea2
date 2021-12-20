@@ -21,6 +21,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -36,14 +37,14 @@
      inkscape:pageopacity="0"
      inkscape:pageshadow="2"
      inkscape:window-width="1920"
-     inkscape:window-height="1021"
+     inkscape:window-height="979"
      id="namedview18"
      showgrid="false"
      inkscape:zoom="8.46875"
      inkscape:cx="34.236133"
      inkscape:cy="0.99874431"
-     inkscape:window-x="0"
-     inkscape:window-y="0"
+     inkscape:window-x="1920"
+     inkscape:window-y="36"
      inkscape:window-maximized="1"
      inkscape:current-layer="svg16"
      inkscape:document-rotation="0" />
@@ -60,12 +61,12 @@
        x="-1" />
   </g>
   <path
-     d="M 10.536558,1.7780727 20.48795,0.35681115 c 0.579102,0 -3.673818,6.82541235 -3.673818,7.36865405 l 1.742595,7.0612588 c 0,0.543242 -6.409789,0.628041 -6.989773,0.628041 -1.397954,4.585313 -8.1268238,1.864688 -9.262111,-2.721509 -0.5782208,0 -4.9739331,-9.3048912 1.8800991,-10.03893 0,-0.5432417 5.7742762,-0.8762533 6.3516159,-0.8762533 z"
+     d="m 11.151525,2.4777863 9.35332,-1.3603293 c 0.544298,0 -3.453024,6.5327935 -3.453024,7.0527453 l 1.637866,6.7585287 c 0,0.519952 -6.024565,0.601116 -6.569692,0.601116 -1.313938,4.388731 -7.6384073,1.784745 -8.7054644,-2.604833 -0.5434701,0 -4.675003,-8.905972 1.7671063,-9.6085411 0,-0.5199519 5.4272461,-0.8386866 5.9698881,-0.8386866 z"
      stroke-dasharray="2,2"
      id="svg_13"
      stroke-width="1.5"
      fill="none"
-     style="fill:none;fill-opacity:1;stroke:#e30e0e;stroke-width:0.529426;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;paint-order:normal" />
+     style="fill:none;fill-opacity:1;stroke:#e30e0e;stroke-width:0.502147;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;paint-order:normal" />
   <g
      style=""
      transform="matrix(0.657318, 0, 0, 0.670367, 2.135933, -43.741829)"
@@ -75,18 +76,18 @@
      fill="none"
      stroke="#000000"
      stroke-width="1.5"
-     style="mix-blend-mode:luminosity;fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.891586;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+     style="mix-blend-mode:luminosity;fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.891586;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;stroke-linejoin:miter"
      id="path12" />
   <text
      xml:space="preserve"
-     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.94124px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.65074"
-     x="10.151663"
-     y="22.68206"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.58617px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.617453;stroke-linejoin:miter"
+     x="9.8599482"
+     y="22.760427"
      id="text880"
-     transform="matrix(0.96458873,-0.02970503,-0.0534532,1.0383574,0,0)"><tspan
+     transform="matrix(0.9633382,-0.02974359,-0.0533839,1.0397053,0,0)"><tspan
        sodipodi:role="line"
        id="tspan878"
-       x="10.151663"
-       y="22.68206"
-       style="stroke-width:0.65074">Area</tspan></text>
+       x="9.8599482"
+       y="22.760427"
+       style="stroke-width:0.617453;stroke-linejoin:miter">Area</tspan></text>
 </svg>

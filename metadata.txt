@@ -1,10 +1,10 @@
 [general]
-name:Calc area 2
+name:CalcArea2
 description:Show layer area and length when editing.
-about:When edit vector layer the annotation is show with area and perimeter.
+about:When edit vector layer, the annotation is show with area and perimeter.
      <b>The Tool work when the current layer is a polygon type and editable.</b>
 
-     This plugin replace the CalcArea from nikolaus batlogg.
+     This plugin replace the CalcArea(deprecated) from nikolaus batlogg.
 
 version:0.1
 qgisMinimumVersion:3.16
@@ -20,7 +20,7 @@ homepage:https://github.com/lmotta/calcarea2/wiki
 tracker:https://github.com/lmotta/calcarea2/issues
 repository:https://github.com/lmotta/calcarea2
 
-icon:./resources/areacalc.svg
+icon:./resources/calcarea.svg
 
 experimental:False
 deprecated:False

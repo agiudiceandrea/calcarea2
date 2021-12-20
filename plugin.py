@@ -51,10 +51,10 @@ class CalcAreaPlugin(QObject):
 
     def __init__(self, iface):
         super().__init__()
-        self.pluginName = 'Calc Area'
+        self.pluginName = 'Calc Area 2'
         self.iface = iface
         self.settings = {
-            'crs': QgsCoordinateReferenceSystem('EPSG:900913'),
+            'crs': QgsCoordinateReferenceSystem('EPSG:3857'),
             'unitArea': QgsUnitTypes.AreaHectares,
             'unitLength': QgsUnitTypes.DistanceMeters
         }
@@ -136,12 +136,12 @@ class CalcAreaPlugin(QObject):
     @pyqtSlot(bool)
     def runAbout(self, checked):
         pass
-        # title = self.tr('{} - About')
-        # title = title.format( self.pluginName )
-        # args = {
-        #     'title': title,
-        #     'prefixHtml': 'about',
-        #     'dirHtml': os.path.join( os.path.dirname(__file__), 'resources' )
-        # }
-        # messageOutputHtml( **args )
+        title = self.tr('{} - About')
+        title = title.format( self.pluginName )
+        args = {
+            'title': title,
+            'prefixHtml': 'about',
+            'dirHtml': os.path.join( os.path.dirname(__file__), 'resources' )
+        }
+        messageOutputHtml( **args ) # about_[locale].html
 
