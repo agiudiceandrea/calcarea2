@@ -39,7 +39,7 @@ from qgis.core import (
     QgsMapLayerType, QgsWkbTypes,
     QgsDistanceArea,
     QgsUnitTypes,
-    QgsCoordinateTransform,
+    QgsCoordinateReferenceSystem, QgsCoordinateTransform,
     QgsProject,
     QgsTextAnnotation, QgsMarkerSymbol, QgsFillSymbol,
 )
@@ -124,21 +124,36 @@ class AnnotationCanvas(QObject):
         self.annot = annot
 
 
-class BaseEvent(QObject):
-    def __init__(self, mapCanvas, crs, key_toggle, unitArea, unitLength):
+class BasePolygonEvent(QObject):
+    def __init__(self, mapCanvas):
         super().__init__()
         self.mapCanvas = mapCanvas
-        self.key_toggle = key_toggle
-        self.showAnotation = True # toggle by key_toggle
-        self.unitArea, self.unitLength = unitArea, unitLength
+        self.crs_unit = {
+            'crs': QgsCoordinateReferenceSystem('EPSG:3857'),
+            'area': QgsUnitTypes.AreaHectares,
+            'length': QgsUnitTypes.DistanceMeters
+        }
         self.hasFilter = False
         self.annotationCanvas = AnnotationCanvas()
         self.project =  QgsProject.instance()
         self.measure = QgsDistanceArea()
-        self.measure.setSourceCrs( crs, self.project.transformContext() )
+        self.measure.setSourceCrs( self.crs_unit['crs'], self.project.transformContext() )
         self.lastPoint = None
+        self.isEnabled = False
 
         self.objsToggleFilter = None # Need set by child class, Ex.:  ( mapCanvas, # Keyboard,  mapCanvas.viewport() # Mouse )
+
+    def setCrsUnit(self, settings):
+        for k in self.crs_unit:
+            self.crs_unit[ k ] = settings[ k ]
+        self.measure.setSourceCrs( self.crs_unit['crs'], self.project.transformContext() )
+
+    def enable(self):
+        self.isEnabled = True
+
+    def disable(self):
+        self.annotationCanvas.remove()
+        self.isEnabled = False
 
     def toggleFilter(self):
         def toggle(obj):
@@ -153,29 +168,25 @@ class BaseEvent(QObject):
 
         self.hasFilter = not self.hasFilter
 
-    def event_key_release_toggle(self):
-        self.annotationCanvas.toggle()
-        self.showAnotation = self.annotationCanvas.isVisible()
-
     def stringMeasures(self, data):
         def createString(length, area):
-            value_ = round( self.measure.convertLengthMeasurement( length,  self.unitLength ), 2 )
-            unit_ = QgsUnitTypes.toAbbreviatedString( self.unitLength )
-            s_lenght = f"{value_} {unit_}"
-            
-            value_ = round( self.measure.convertAreaMeasurement( area,  self.unitArea ), 2 )
-            unit_ = QgsUnitTypes.toAbbreviatedString( self.unitArea )
-            s_area = f"{value_} {unit_}"
+            def getString(value, unit, f_measure):
+                value_ = round( f_measure( value, unit  ), 2 )
+                unit_ = QgsUnitTypes.toAbbreviatedString( unit )
+                return f"{value_} {unit_}"
 
-            return f"Area: {s_area}\nPerimeter: {s_lenght}" if s_area else f"Length: {s_lenght}"
+            s_lenght = getString( length, self.crs_unit['length'], self.measure.convertLengthMeasurement )
+            s_area = getString( area, self.crs_unit['area'], self.measure.convertAreaMeasurement )
+
+            return f"Area: {s_area}\nPerimeter: {s_lenght}"
 
         if not ( isinstance( data, list ) or isinstance( data, QgsGeometry ) ):
             raise TypeError(f"Type data '{str( type( data) )}' not implemeted")
 
-        if not isinstance( self.unitArea, QgsUnitTypes.AreaUnit ):
-            raise TypeError(f"Unit measure '{QgsUnitTypes.toAbbreviatedString( self.unitArea )}' not implemeted")
-        if not isinstance( self.unitLength, QgsUnitTypes.DistanceUnit ):
-            raise TypeError(f"Unit measure '{QgsUnitTypes.toAbbreviatedString( self.unitLength )}' not implemeted")
+        if not isinstance( self.crs_unit['area'], QgsUnitTypes.AreaUnit ):
+            raise TypeError(f"Unit measure '{QgsUnitTypes.toAbbreviatedString( self.crs_unit['area'] )}' not implemeted")
+        if not isinstance( self.crs_unit['length'], QgsUnitTypes.DistanceUnit ):
+            raise TypeError(f"Unit measure '{QgsUnitTypes.toAbbreviatedString( self.crs_unit['length'] )}' not implemeted")
 
         if isinstance( data, list): # List of xyPoints
             length = self.measure.measureLine( data )
@@ -187,18 +198,14 @@ class BaseEvent(QObject):
         area = data.area()
         return createString( length, area )
 
-    def setCrsUnit(self, crs, unitArea, unitLength):
-        self.unitArea, self.unitLength = unitArea, unitLength
-        self.measure.setSourceCrs( crs, self.project.transformContext() )
-
     @pyqtSlot(QObject, QEvent)
     def eventFilter(self, watched, event):
         pass # Virtual
 
 
-class AddFeatureEvent(BaseEvent):
-    def __init__(self, mapCanvas, crs, key_toggle, unitArea, unitLength):
-        super().__init__( mapCanvas, crs, key_toggle, unitArea, unitLength )
+class AddFeatureEvent(BasePolygonEvent):
+    def __init__(self, mapCanvas):
+        super().__init__( mapCanvas )
         self.objsToggleFilter = (
             mapCanvas, # Keyboard
             mapCanvas.viewport() # Mouse
@@ -212,28 +219,32 @@ class AddFeatureEvent(BaseEvent):
             y_ = event.localPos().y()
             return self.mapCanvas.getCoordinateTransform().toMapCoordinates( x_, y_)
 
-        def showMeasure(xyPoint):
-            points =   self.points + [ self._transformPoint( xyPoint ) ]
+        def showMeasure():
+            points =   self.points + [ self._transformProject2Measure( self.lastPoint ) ]
             label = self.stringMeasures( points )
-            self.annotationCanvas.setText( label, xyPoint )
+            self.annotationCanvas.setText( label, self.lastPoint )
 
         def event_mouse_move():
+            if not self.isEnabled:
+                return
+
             if len( self.points ) < 2:
                 return
 
             self.lastPoint = xyCursor()
-            if len( self.points ) > 2 and not self.annotationCanvas.isVisible():
-                return
-
-            if self.showAnotation:
-                showMeasure( self.lastPoint )
+            showMeasure()
 
         def event_mouse_release():
             def leftPress():
-                self.points.append( self._transformPoint( xyCursor() ) )
+                self.points.append( self._transformProject2Measure( xyCursor() ) )
 
             def rightPress():
-                self.clear()
+                if self.isEnabled and \
+                    len ( self.points ): # Twice clicked
+                    xyPoint = self._transformMeasure2Project( self.points[-1] )
+                    label = self.stringMeasures( self.points )
+                    self.annotationCanvas.setText( label, xyPoint )
+                self.points.clear()
 
             btn = event.button()
             d = {
@@ -245,7 +256,7 @@ class AddFeatureEvent(BaseEvent):
 
         def event_key_release():
             if event.key() == Qt.Key_Escape:
-                self.clear()
+                self.points.clear()
 
         e_type = event.type()
         d = {
@@ -258,130 +269,154 @@ class AddFeatureEvent(BaseEvent):
         
         return False
 
-    def _transformPoint(self, pointXY):
+    def _transformProject2Measure(self, pointMap):
         ct = QgsCoordinateTransform( self.project.crs(), self.measure.sourceCrs(), self.project )
-        return ct.transform( pointXY )
+        return ct.transform( pointMap )
 
-    def clear(self):
-        self.annotationCanvas.remove()
-        self.points.clear()
+    def _transformMeasure2Project(self, pointMeasure):
+        ct = QgsCoordinateTransform( self.measure.sourceCrs(), self.project.crs(), self.project )
+        return ct.transform( pointMeasure )
+
+    def enable(self, toggle=False):
+        if toggle:
+            self.toggleFilter()
+        super().enable()
+
+    def disable(self, toggle=False):
+        if toggle:
+            self.toggleFilter()
+        super().disable()
+
+    def setVisible(self, visible):
+        if self.annotationCanvas.isVisible() == visible:
+            return
+        self.annotationCanvas.toggle()
 
 
-class ChangeGeometryEvent(BaseEvent):
-    def __init__(self,  mapCanvas, crs, key_toggle, unitArea, unitLength):
-        super().__init__( mapCanvas, crs, key_toggle, unitArea, unitLength )
+class ChangeGeometryEvent(BasePolygonEvent):
+    def __init__(self,  mapCanvas):
+        super().__init__( mapCanvas )
         # NOT filterEvent: self.objsToggleFilter = None and self.hasFilter = False - BASE class
         self.lastMessage = None
-        self.hasConnect = False
         self.layer = None
 
-    def enable(self, layer):
-        self.layer = layer
-        self.hasConnect = True
-        layer.geometryChanged.connect( self.geometryChanged )
-        self.ct = QgsCoordinateTransform( layer.sourceCrs(), self.measure.sourceCrs(), self.project )
+    def enable(self):
+        super().enable()
+        self.layer = self.mapCanvas.currentLayer()
+        self._configLayer()
 
     def disable(self):
-        self.hasConnect = False
+        super().disable()
         self.layer.geometryChanged.disconnect( self.geometryChanged )
-        self.annotationCanvas.remove()
+
+    def changeLayer(self, layer):
+        self.layer.geometryChanged.disconnect( self.geometryChanged )
+        self.layer = layer
+        self._configLayer()
 
     @pyqtSlot('QgsFeatureId', QgsGeometry)
     def geometryChanged(self, fid, geometry):
         geometry.transform( self.ct )
         self.lastMessage = self.stringMeasures( geometry )
         self.lastPoint = self.mapCanvas.getCoordinateTransform().toMapCoordinates( self.mapCanvas.mouseLastXY() )
+        self.annotationCanvas.setText( self.lastMessage, self.lastPoint )
 
-        if self.showAnotation:
-            self.annotationCanvas.setText( self.lastMessage, self.lastPoint )
+    def _configLayer(self):
+        self.layer.geometryChanged.connect( self.geometryChanged )
+        self.ct = QgsCoordinateTransform( self.layer.sourceCrs(), self.measure.sourceCrs(), self.project )
 
 
 class CalcAreaEvent(QObject):
     def __init__(self, iface):
         super().__init__()
-        self.mapCanvas = iface.mapCanvas()
         self.iface = iface
-        self.addFeatureEvent = None
-        self.changeGeometryEvent =  None
-        self.hasEnable = False
+        self.mapCanvas = iface.mapCanvas()
+        self.addFeatureEvent = AddFeatureEvent( self.mapCanvas )
+        self.changeGeometryEvent =  ChangeGeometryEvent( self.mapCanvas )
 
-    def init(self, crs, unitArea, unitLength):
-        args = {
-            'mapCanvas': self.mapCanvas,
-            'crs': crs,
-            'key_toggle': Qt.Key_T,
-            'unitArea': unitArea,
-            'unitLength': unitLength
-        }
-        self.addFeatureEvent = AddFeatureEvent( **args )
-        self.changeGeometryEvent = ChangeGeometryEvent( **args )
         self.mapCanvas.mapToolSet.connect( self.changeMapTool )
         self.iface.currentLayerChanged.connect( self.currentLayerChanged )
-        self.hasEnable = True
 
-        # Enable if current tool is Edit
-        self.changeMapTool( self.mapCanvas.mapTool(), None )
+    def run(self, checked):
+        def enable():
+            for event in ( self.addFeatureEvent, self.changeGeometryEvent ):
+                if not event.isEnabled:
+                    event.enable()
 
-    def setCrsUnit(self, crs, unitArea, unitLength):
-        self.changeGeometryEvent.setCrsUnit( crs, unitArea, unitLength )
-        self.addFeatureEvent.setCrsUnit( crs, unitArea, unitLength )
+            # self.mapCanvas.mapToolSet.connect( self.changeMapTool )
+            # self.iface.currentLayerChanged.connect( self.currentLayerChanged )
 
-    def disable(self):
-        self.mapCanvas.mapToolSet.disconnect( self.changeMapTool )
-        self.iface.currentLayerChanged.disconnect( self.currentLayerChanged )
+            # Enable if current tool is Edit
+            # self.changeMapTool( self.mapCanvas.mapTool(), None )
 
-        if self.addFeatureEvent.hasFilter:
-            self.addFeatureEvent.toggleFilter()
-            self.addFeatureEvent.clear()
-        self.addFeatureEvent = None
+        def disable():
+            for event in ( self.addFeatureEvent, self.changeGeometryEvent):
+                if event.isEnabled:
+                    event.disable()
 
-        if self.changeGeometryEvent.hasConnect:
-            self.changeGeometryEvent.disable()
-        self.changeGeometryEvent =  None
+            # self.mapCanvas.mapToolSet.disconnect( self.changeMapTool )
+            # self.iface.currentLayerChanged.disconnect( self.currentLayerChanged )
 
-        self.hasEnable = False
+        enable() if checked else disable()
+
+    def setCrsUnit(self, settings):
+        self.addFeatureEvent.setCrsUnit( settings )
+        self.changeGeometryEvent.setCrsUnit( settings )
+
+    def getCrsUnit(self):
+        return self.addFeatureEvent.crs_unit
 
     @pyqtSlot(QgsMapTool, QgsMapTool)
     def changeMapTool(self, newTool, oldTool):
-        def disableFeatures(disable_addFeatureEvent=True, disable_changeGeometry=True):
-            if disable_addFeatureEvent and self.addFeatureEvent.hasFilter:
-                self.addFeatureEvent.toggleFilter()
-            if disable_changeGeometry and self.changeGeometryEvent.hasConnect:
+        def disableFeatures(status):
+            if status['addFeatureEvent'] and self.addFeatureEvent.isEnabled:
+                self.addFeatureEvent.disable(True)
+            if status['changeGeometry'] and self.changeGeometryEvent.isEnabled:
                 self.changeGeometryEvent.disable()
 
         mapTool = newTool
         if not isinstance( mapTool, QgsMapTool ):
             mapTool = self.mapCanvas.mapTool()
 
+        status = {
+            'addFeatureEvent': True,
+            'changeGeometry': True
+        }
         if not isinstance( mapTool, QgsMapTool ):
-            disableFeatures()
+            disableFeatures( status )
             return
 
         if not  mapTool.flags() == QgsMapTool.EditTool:
-            disableFeatures()
+            disableFeatures( status )
             return
 
         if not self._isValidLayer( self.mapCanvas.currentLayer() ):
-            disableFeatures()
+            disableFeatures( status )
             return
 
         name = mapTool.action().objectName()
         if not name == 'mActionAddFeature':
-            disableFeatures( disable_changeGeometry=False )
-            if not self.changeGeometryEvent.hasConnect:
-                self.changeGeometryEvent.enable( self.mapCanvas.currentLayer() )
+            status['changeGeometry'] = False
+            disableFeatures( status )
+            if not self.changeGeometryEvent.isEnabled:
+                self.changeGeometryEvent.enable()
             return
 
-        disableFeatures( disable_addFeatureEvent=False )
-        if not self.addFeatureEvent.hasFilter:
-            self.addFeatureEvent.toggleFilter()
+        status['addFeatureEvent'] = False
+        disableFeatures( status )
+        # if not self.addFeatureEvent.isEnabled:
+        #     self.addFeatureEvent.enable()
+        enabled = self.addFeatureEvent.isEnabled
+        self.addFeatureEvent.enable(True)
+        if not enabled:
+            self.addFeatureEvent.disable()
 
     @pyqtSlot('QgsMapLayer*')
     def currentLayerChanged(self, layer):
-        if self._isValidLayer( layer ) and self.changeGeometryEvent.hasConnect:
+        if self._isValidLayer( layer ) and self.changeGeometryEvent.isEnabled:
             self.changeGeometryEvent.disable()
-            self.changeGeometryEvent.enable( layer )
-
+            self.changeGeometryEvent.changeLayer( layer)
+            
     def _isValidLayer(self, layer):
         return \
             False if \

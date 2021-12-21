@@ -56,14 +56,14 @@ def buttonOkCancel():
 
 
 class DialogSetup(QDialog):
-    def __init__(self, parent, title, crs, unitLength, unitArea):
+    def __init__(self, parent, title, crs, length, area):
         super().__init__( parent )
         self.title = title
         self.msgBar = QgsMessageBar()
 
         lytCrs = self._layoutCrs( crs ) # self.psCrs
-        lytUnitLength = self._layoutUnitLength( unitLength ) # self.cmbUnitLength
-        lytUnitArea = self._layoutUnitArea( unitArea ) # self.cmbUnitArea
+        lytUnitLength = self._layoutUnitLength( length ) # self.cmbUnitLength
+        lytUnitArea = self._layoutUnitArea( area ) # self.cmbUnitArea
 
         self.setWindowTitle( title )
         lytMain = QVBoxLayout()
@@ -81,8 +81,8 @@ class DialogSetup(QDialog):
     def currentData(self):
         return {
             'crs': self.psCrs.crs(),
-            'unitLength':  QgsUnitTypes.DistanceUnit( self.cmbUnitLength.currentData() ),
-            'unitArea': QgsUnitTypes.AreaUnit( self.cmbUnitArea.currentData() )
+            'length':  QgsUnitTypes.DistanceUnit( self.cmbUnitLength.currentData() ),
+            'area': QgsUnitTypes.AreaUnit( self.cmbUnitArea.currentData() )
         }
 
     def _layoutCrs(self, crs):

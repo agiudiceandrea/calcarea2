@@ -33,7 +33,6 @@ from qgis.PyQt.QtWidgets import QAction, QToolButton, QMenu
 
 from qgis.core import (
     QgsApplication,
-    QgsCoordinateReferenceSystem,
     QgsUnitTypes
 )
 from qgis.gui import QgsMapTool
@@ -48,16 +47,10 @@ from .dialog_setup import DialogSetup
 
 
 class CalcAreaPlugin(QObject):
-
     def __init__(self, iface):
         super().__init__()
         self.pluginName = 'Calc Area 2'
         self.iface = iface
-        self.settings = {
-            'crs': QgsCoordinateReferenceSystem('EPSG:3857'),
-            'unitArea': QgsUnitTypes.AreaHectares,
-            'unitLength': QgsUnitTypes.DistanceMeters
-        }
         self.translate = Translate( type(self).__name__ )
         self.tr = self.translate.tr
 
@@ -109,29 +102,24 @@ class CalcAreaPlugin(QObject):
 
     @pyqtSlot(bool)
     def runTool(self, checked):
-        if checked:
-            if not self.toolEvent.hasEnable:
-                self.toolEvent.init( **self.settings )
-            return
-
-        self.toolEvent.disable()
+        self.toolEvent.run( checked )
 
     @pyqtSlot(bool)
     def runSetup(self, checked):
+        settings = self.toolEvent.getCrsUnit()
         layer = self.iface.mapCanvas().currentLayer()
         if not layer is None:
             crs = layer.crs()
             if crs.isValid() and not crs.isGeographic():
-                self.settings['crs'] = crs
+                settings['crs'] = crs
 
-        args = self.settings.copy()
+        args = settings.copy()
         args['parent'] = self.iface.mainWindow()
         args['title'] = self.pluginName
         dlg = DialogSetup( **args )
         if dlg.exec_() == dlg.Accepted:
-            self.settings = dlg.currentData()
-            if self.toolEvent.hasEnable:
-                self.toolEvent.setCrsUnit( **self.settings )
+            settings = dlg.currentData()
+            self.toolEvent.setCrsUnit( settings )
 
     @pyqtSlot(bool)
     def runAbout(self, checked):
