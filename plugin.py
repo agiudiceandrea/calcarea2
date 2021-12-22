@@ -59,7 +59,8 @@ class CalcAreaPlugin(QObject):
         self.toolButton.setMenu( QMenu() )
         self.toolButton.setPopupMode( QToolButton.MenuButtonPopup )
         self.toolBtnAction = self.iface.addToolBarWidget( self.toolButton )
-        self.titleTool = self.tr('CalcArea2 - Show layer area and length when editing')
+        self.toolTip = self.tr('Show layer area and length when editing')
+        self.titleTool = 'CalcArea2'
 
         self.tool = QgsMapTool( iface.mapCanvas() )
         self.toolEvent = CalcAreaEvent( iface )
@@ -76,7 +77,7 @@ class CalcAreaPlugin(QObject):
 
         # Action Tool
         icon = QIcon( os.path.join( os.path.dirname(__file__), 'resources', 'calcarea.svg' ) )
-        self.actions['tool'] = createAction( icon, self.titleTool, self.runTool, self.titleTool, True )
+        self.actions['tool'] = createAction( icon, self.titleTool, self.runTool, self.toolTip, True )
         self.tool.setAction( self.actions['tool'] )
         # Action Setup
         title = self.tr('Setup...')

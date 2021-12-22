@@ -1,6 +1,6 @@
 SOURCES = \
 ../plugin.py \
-../polygonclickmap.py \
+../calcareaevent.py \
 ../dialog_setup.py
 
 
