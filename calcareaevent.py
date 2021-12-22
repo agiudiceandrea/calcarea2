@@ -45,8 +45,6 @@ from qgis.core import (
 )
 from qgis.gui import QgsMapTool
 
-import qgis.utils as QgsUtils
-
 
 class AnnotationCanvas(QObject):
     def __init__(self):
@@ -133,20 +131,22 @@ class BasePolygonEvent(QObject):
             'area': QgsUnitTypes.AreaHectares,
             'length': QgsUnitTypes.DistanceMeters
         }
-        self.hasFilter = False
         self.annotationCanvas = AnnotationCanvas()
         self.project =  QgsProject.instance()
         self.measure = QgsDistanceArea()
         self.measure.setSourceCrs( self.crs_unit['crs'], self.project.transformContext() )
+        self.ctProject2Measure = QgsCoordinateTransform( self.project.crs(), self.crs_unit['crs'], self.project )
         self.lastPoint = None
-        self.isEnabled = False
+        self.isEnabled = False # Annotation
+        self.isEventFiltered = False
 
         self.objsToggleFilter = None # Need set by child class, Ex.:  ( mapCanvas, # Keyboard,  mapCanvas.viewport() # Mouse )
 
-    def setCrsUnit(self, settings):
+    def setCrsUnit(self, crs_unit):
         for k in self.crs_unit:
-            self.crs_unit[ k ] = settings[ k ]
+            self.crs_unit[ k ] = crs_unit[ k ]
         self.measure.setSourceCrs( self.crs_unit['crs'], self.project.transformContext() )
+        self.ctProject2Measure.setSourceCrs( self.crs_unit['crs'] )
 
     def enable(self):
         self.isEnabled = True
@@ -155,9 +155,9 @@ class BasePolygonEvent(QObject):
         self.annotationCanvas.remove()
         self.isEnabled = False
 
-    def toggleFilter(self):
+    def toggleEventFilter(self):
         def toggle(obj):
-            f = obj.removeEventFilter if self.hasFilter else obj.installEventFilter
+            f = obj.removeEventFilter if self.isEventFiltered else obj.installEventFilter
             f( self )
 
         if self.objsToggleFilter is None:
@@ -166,7 +166,7 @@ class BasePolygonEvent(QObject):
         for obj in self.objsToggleFilter:
             toggle( obj )
 
-        self.hasFilter = not self.hasFilter
+        self.isEventFiltered = not self.isEventFiltered
 
     def stringMeasures(self, data):
         def createString(length, area):
@@ -220,7 +220,7 @@ class AddFeatureEvent(BasePolygonEvent):
             return self.mapCanvas.getCoordinateTransform().toMapCoordinates( x_, y_)
 
         def showMeasure():
-            points =   self.points + [ self._transformProject2Measure( self.lastPoint ) ]
+            points =   self.points + [ self.ctProject2Measure.transform( self.lastPoint ) ]
             label = self.stringMeasures( points )
             self.annotationCanvas.setText( label, self.lastPoint )
 
@@ -236,12 +236,12 @@ class AddFeatureEvent(BasePolygonEvent):
 
         def event_mouse_release():
             def leftPress():
-                self.points.append( self._transformProject2Measure( xyCursor() ) )
+                self.points.append( self.ctProject2Measure.transform( xyCursor() ) )
 
             def rightPress():
                 if self.isEnabled and \
                     len ( self.points ): # Twice clicked
-                    xyPoint = self._transformMeasure2Project( self.points[-1] )
+                    xyPoint = self.ctProject2Measure.transform( self.points[-1],  QgsCoordinateTransform.ReverseTransform )
                     label = self.stringMeasures( self.points )
                     self.annotationCanvas.setText( label, xyPoint )
                 self.points.clear()
@@ -269,36 +269,14 @@ class AddFeatureEvent(BasePolygonEvent):
         
         return False
 
-    def _transformProject2Measure(self, pointMap):
-        ct = QgsCoordinateTransform( self.project.crs(), self.measure.sourceCrs(), self.project )
-        return ct.transform( pointMap )
-
-    def _transformMeasure2Project(self, pointMeasure):
-        ct = QgsCoordinateTransform( self.measure.sourceCrs(), self.project.crs(), self.project )
-        return ct.transform( pointMeasure )
-
-    def enable(self, toggle=False):
-        if toggle:
-            self.toggleFilter()
-        super().enable()
-
-    def disable(self, toggle=False):
-        if toggle:
-            self.toggleFilter()
-        super().disable()
-
-    def setVisible(self, visible):
-        if self.annotationCanvas.isVisible() == visible:
-            return
-        self.annotationCanvas.toggle()
-
 
 class ChangeGeometryEvent(BasePolygonEvent):
     def __init__(self,  mapCanvas):
         super().__init__( mapCanvas )
-        # NOT filterEvent: self.objsToggleFilter = None and self.hasFilter = False - BASE class
+        # Not event filter: self.objsToggleFilter = None and self.isFiltered = False (Base class)
         self.lastMessage = None
-        self.layer = None
+        self.layer = None # self.enable, self.changeLayer
+        self.ctGeometry = None # self._configLayer
 
     def enable(self):
         super().enable()
@@ -316,14 +294,14 @@ class ChangeGeometryEvent(BasePolygonEvent):
 
     @pyqtSlot('QgsFeatureId', QgsGeometry)
     def geometryChanged(self, fid, geometry):
-        geometry.transform( self.ct )
+        geometry.transform( self.ctGeometry )
         self.lastMessage = self.stringMeasures( geometry )
         self.lastPoint = self.mapCanvas.getCoordinateTransform().toMapCoordinates( self.mapCanvas.mouseLastXY() )
         self.annotationCanvas.setText( self.lastMessage, self.lastPoint )
 
     def _configLayer(self):
         self.layer.geometryChanged.connect( self.geometryChanged )
-        self.ct = QgsCoordinateTransform( self.layer.sourceCrs(), self.measure.sourceCrs(), self.project )
+        self.ctGeometry = QgsCoordinateTransform( self.layer.sourceCrs(), self.measure.sourceCrs(), self.project )
 
 
 class CalcAreaEvent(QObject):
@@ -338,8 +316,8 @@ class CalcAreaEvent(QObject):
         self.iface.currentLayerChanged.connect( self.currentLayerChanged )
 
     def run(self, checked):
-        def enable():
-            for event in ( self.addFeatureEvent, self.changeGeometryEvent ):
+        def enable(events):
+            for event in events:
                 if not event.isEnabled:
                     event.enable()
 
@@ -349,19 +327,21 @@ class CalcAreaEvent(QObject):
             # Enable if current tool is Edit
             # self.changeMapTool( self.mapCanvas.mapTool(), None )
 
-        def disable():
-            for event in ( self.addFeatureEvent, self.changeGeometryEvent):
+        def disable(events):
+            for event in events:
                 if event.isEnabled:
                     event.disable()
 
             # self.mapCanvas.mapToolSet.disconnect( self.changeMapTool )
             # self.iface.currentLayerChanged.disconnect( self.currentLayerChanged )
 
-        enable() if checked else disable()
+        # For addFeatureEvent enable/disable without toggle eventFilter(see changeMapTool)
+        events = ( self.addFeatureEvent, self.changeGeometryEvent )
+        enable( events ) if checked else disable( events )
 
-    def setCrsUnit(self, settings):
-        self.addFeatureEvent.setCrsUnit( settings )
-        self.changeGeometryEvent.setCrsUnit( settings )
+    def setCrsUnit(self, crs_unit):
+        self.addFeatureEvent.setCrsUnit( crs_unit )
+        self.changeGeometryEvent.setCrsUnit( crs_unit )
 
     def getCrsUnit(self):
         return self.addFeatureEvent.crs_unit
@@ -369,8 +349,13 @@ class CalcAreaEvent(QObject):
     @pyqtSlot(QgsMapTool, QgsMapTool)
     def changeMapTool(self, newTool, oldTool):
         def disableFeatures(status):
-            if status['addFeatureEvent'] and self.addFeatureEvent.isEnabled:
-                self.addFeatureEvent.disable(True)
+            if status['addFeatureEvent']:
+                if self.addFeatureEvent.isEventFiltered:
+                    self.addFeatureEvent.toggleEventFilter()
+                if self.addFeatureEvent.isEnabled:
+                    self.addFeatureEvent.disable() # Remove annotation
+                    self.addFeatureEvent.enable()
+
             if status['changeGeometry'] and self.changeGeometryEvent.isEnabled:
                 self.changeGeometryEvent.disable()
 
@@ -378,6 +363,8 @@ class CalcAreaEvent(QObject):
         if not isinstance( mapTool, QgsMapTool ):
             mapTool = self.mapCanvas.mapTool()
 
+        # For addFeatureEvent enable/disable with toggle eventFilter
+        # 
         status = {
             'addFeatureEvent': True,
             'changeGeometry': True
@@ -404,12 +391,16 @@ class CalcAreaEvent(QObject):
 
         status['addFeatureEvent'] = False
         disableFeatures( status )
+        if not self.addFeatureEvent.isEventFiltered:
+            self.addFeatureEvent.toggleEventFilter()
+
         # if not self.addFeatureEvent.isEnabled:
         #     self.addFeatureEvent.enable()
-        enabled = self.addFeatureEvent.isEnabled
-        self.addFeatureEvent.enable(True)
-        if not enabled:
-            self.addFeatureEvent.disable()
+
+        # enabled = self.addFeatureEvent.isEnabled
+        # self.addFeatureEvent.enable(True)
+        # if not enabled:
+        #     self.addFeatureEvent.disable()
 
     @pyqtSlot('QgsMapLayer*')
     def currentLayerChanged(self, layer):
