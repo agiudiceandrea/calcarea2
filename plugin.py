@@ -63,7 +63,7 @@ class CalcAreaPlugin(QObject):
         self.titleTool = 'CalcArea2'
 
         self.tool = QgsMapTool( iface.mapCanvas() )
-        self.toolEvent = CalcAreaEvent( iface )
+        self.toolEvent = None # initGui
 
     def initGui(self):
         def createAction(icon, title, calback, toolTip=None, isCheckable=False):
@@ -79,6 +79,7 @@ class CalcAreaPlugin(QObject):
         icon = QIcon( os.path.join( os.path.dirname(__file__), 'resources', 'calcarea.svg' ) )
         self.actions['tool'] = createAction( icon, self.titleTool, self.runTool, self.toolTip, True )
         self.tool.setAction( self.actions['tool'] )
+        self.toolEvent = CalcAreaEvent( self.iface, self.actions['tool'] )
         # Action Setup
         title = self.tr('Setup...')
         icon = QgsApplication.getThemeIcon('/propertyicons/general.svg')

@@ -136,7 +136,6 @@ class BasePolygonEvent(QObject):
         self.measure = QgsDistanceArea()
         self.measure.setSourceCrs( self.crs_unit['crs'], self.project.transformContext() )
         self.ctProject2Measure = QgsCoordinateTransform( self.project.crs(), self.crs_unit['crs'], self.project )
-        self.lastPoint = None
         self.isEnabled = False # Annotation
         self.isEventFiltered = False
 
@@ -210,6 +209,8 @@ class AddFeatureEvent(BasePolygonEvent):
             mapCanvas.viewport() # Mouse
         )
         self.points = []
+        self.lastPoint = None
+        self.isValidLayer = False
     
     @pyqtSlot(QObject, QEvent)
     def eventFilter(self, watched, event):
@@ -223,7 +224,7 @@ class AddFeatureEvent(BasePolygonEvent):
             self.annotationCanvas.setText( label, self.lastPoint )
 
         def event_mouse_move():
-            if not self.isEnabled:
+            if not self.isValidLayer or not self.isEnabled:
                 return
 
             if len( self.points ) < 2:
@@ -243,6 +244,9 @@ class AddFeatureEvent(BasePolygonEvent):
                     label = self.stringMeasures( self.points )
                     self.annotationCanvas.setText( label, xyPoint )
                 self.points.clear()
+
+            if not self.isValidLayer:
+                return
 
             btn = event.button()
             d = {
@@ -272,7 +276,6 @@ class ChangeGeometryEvent(BasePolygonEvent):
     def __init__(self,  mapCanvas):
         super().__init__( mapCanvas )
         # Not event filter: self.objsToggleFilter = None and self.isFiltered = False (Base class)
-        self.lastMessage = None
         self.layer = None # self.enable, self.changeLayer
         self.ctGeometry = None # self._configLayer
 
@@ -292,10 +295,13 @@ class ChangeGeometryEvent(BasePolygonEvent):
 
     @pyqtSlot('QgsFeatureId', QgsGeometry)
     def geometryChanged(self, fid, geometry):
+        if not self.isEnabled:
+            return
+
         geometry.transform( self.ctGeometry )
-        self.lastMessage = self.stringMeasures( geometry )
-        self.lastPoint = self.mapCanvas.getCoordinateTransform().toMapCoordinates( self.mapCanvas.mouseLastXY() )
-        self.annotationCanvas.setText( self.lastMessage, self.lastPoint )
+        msg = self.stringMeasures( geometry )
+        pointXY = self.mapCanvas.getCoordinateTransform().toMapCoordinates( self.mapCanvas.mouseLastXY() )
+        self.annotationCanvas.setText( msg, pointXY )
 
     def _configLayer(self):
         self.layer.geometryChanged.connect( self.geometryChanged )
@@ -303,12 +309,18 @@ class ChangeGeometryEvent(BasePolygonEvent):
 
 
 class CalcAreaEvent(QObject):
-    def __init__(self, iface):
+    def __init__(self, iface, action):
         super().__init__()
         self.iface = iface
+        self.action = action
         self.mapCanvas = iface.mapCanvas()
         self.addFeatureEvent = AddFeatureEvent( self.mapCanvas )
         self.changeGeometryEvent =  ChangeGeometryEvent( self.mapCanvas )
+        self.currentEvent = None
+
+        isValid = self._isValidLayer( self.mapCanvas.currentLayer() )
+        action.setEnabled( isValid )
+        self.addFeatureEvent.isValidLayer = isValid
 
         self.mapCanvas.mapToolSet.connect( self.changeMapTool )
         self.iface.currentLayerChanged.connect( self.currentLayerChanged )
@@ -319,21 +331,11 @@ class CalcAreaEvent(QObject):
                 if not event.isEnabled:
                     event.enable()
 
-            # self.mapCanvas.mapToolSet.connect( self.changeMapTool )
-            # self.iface.currentLayerChanged.connect( self.currentLayerChanged )
-
-            # Enable if current tool is Edit
-            # self.changeMapTool( self.mapCanvas.mapTool(), None )
-
         def disable(events):
             for event in events:
                 if event.isEnabled:
                     event.disable()
 
-            # self.mapCanvas.mapToolSet.disconnect( self.changeMapTool )
-            # self.iface.currentLayerChanged.disconnect( self.currentLayerChanged )
-
-        # For addFeatureEvent enable/disable without toggle eventFilter(see changeMapTool)
         events = ( self.addFeatureEvent, self.changeGeometryEvent )
         enable( events ) if checked else disable( events )
 
@@ -357,12 +359,12 @@ class CalcAreaEvent(QObject):
             if status['changeGeometry'] and self.changeGeometryEvent.isEnabled:
                 self.changeGeometryEvent.disable()
 
+        self.currentEvent = None
+
         mapTool = newTool
         if not isinstance( mapTool, QgsMapTool ):
             mapTool = self.mapCanvas.mapTool()
 
-        # For addFeatureEvent enable/disable with toggle eventFilter
-        # 
         status = {
             'addFeatureEvent': True,
             'changeGeometry': True
@@ -371,7 +373,7 @@ class CalcAreaEvent(QObject):
             disableFeatures( status )
             return
 
-        if not  mapTool.flags() == QgsMapTool.EditTool:
+        if not mapTool.flags() == QgsMapTool.EditTool:
             disableFeatures( status )
             return
 
@@ -383,28 +385,28 @@ class CalcAreaEvent(QObject):
         if not name == 'mActionAddFeature':
             status['changeGeometry'] = False
             disableFeatures( status )
+            self.currentEvent = self.changeGeometryEvent
             if not self.changeGeometryEvent.isEnabled:
                 self.changeGeometryEvent.enable()
             return
 
         status['addFeatureEvent'] = False
         disableFeatures( status )
+        self.currentEvent = self.addFeatureEvent
         if not self.addFeatureEvent.isEventFiltered:
             self.addFeatureEvent.toggleEventFilter()
 
-        # if not self.addFeatureEvent.isEnabled:
-        #     self.addFeatureEvent.enable()
-
-        # enabled = self.addFeatureEvent.isEnabled
-        # self.addFeatureEvent.enable(True)
-        # if not enabled:
-        #     self.addFeatureEvent.disable()
-
     @pyqtSlot('QgsMapLayer*')
     def currentLayerChanged(self, layer):
-        if self._isValidLayer( layer ) and self.changeGeometryEvent.isEnabled:
-            self.changeGeometryEvent.disable()
-            self.changeGeometryEvent.changeLayer( layer)
+        isValid = self._isValidLayer( layer )
+        self.action.setEnabled( isValid )
+        self.addFeatureEvent.isValidLayer = isValid
+
+        if isValid and \
+        self.currentEvent == self.changeGeometryEvent and \
+        self.changeGeometryEvent.isEnabled and \
+        not self.changeGeometryEvent == layer:
+           self.changeGeometryEvent.changeLayer( layer)
             
     def _isValidLayer(self, layer):
         return \
