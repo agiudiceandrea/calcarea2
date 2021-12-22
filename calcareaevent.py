@@ -30,7 +30,7 @@ from qgis.PyQt.QtCore import (
     QObject,
     QEvent,
     QPointF,
-    pyqtSlot
+    pyqtSlot, pyqtSignal
 )
 from qgis.PyQt.QtGui import QFont, QTextDocument
 
@@ -309,21 +309,32 @@ class ChangeGeometryEvent(BasePolygonEvent):
 
 
 class CalcAreaEvent(QObject):
-    def __init__(self, iface, action):
+    validLayer = pyqtSignal(bool)
+    def __init__(self, iface):
         super().__init__()
         self.iface = iface
-        self.action = action
         self.mapCanvas = iface.mapCanvas()
         self.addFeatureEvent = AddFeatureEvent( self.mapCanvas )
         self.changeGeometryEvent =  ChangeGeometryEvent( self.mapCanvas )
         self.currentEvent = None
 
         isValid = self._isValidLayer( self.mapCanvas.currentLayer() )
-        action.setEnabled( isValid )
         self.addFeatureEvent.isValidLayer = isValid
 
         self.mapCanvas.mapToolSet.connect( self.changeMapTool )
         self.iface.currentLayerChanged.connect( self.currentLayerChanged )
+
+    def __del__(self):
+        if self.addFeatureEvent.isEnabled:
+            self.addFeatureEvent.disable()
+        if self.addFeatureEvent.isEventFiltered:
+            self.addFeatureEvent.toggleEventFilter()
+
+        if self.changeGeometryEvent.isEnabled:
+            self.changeGeometryEvent.disable()
+
+        self.mapCanvas.mapToolSet.disconnect( self.changeMapTool )
+        self.iface.currentLayerChanged.disconnect( self.currentLayerChanged )
 
     def run(self, checked):
         def enable(events):
@@ -353,8 +364,7 @@ class CalcAreaEvent(QObject):
                 if self.addFeatureEvent.isEventFiltered:
                     self.addFeatureEvent.toggleEventFilter()
                 if self.addFeatureEvent.isEnabled:
-                    self.addFeatureEvent.disable() # Remove annotation
-                    self.addFeatureEvent.enable()
+                    self.addFeatureEvent.annotationCanvas.remove()
 
             if status['changeGeometry'] and self.changeGeometryEvent.isEnabled:
                 self.changeGeometryEvent.disable()
@@ -399,8 +409,11 @@ class CalcAreaEvent(QObject):
     @pyqtSlot('QgsMapLayer*')
     def currentLayerChanged(self, layer):
         isValid = self._isValidLayer( layer )
-        self.action.setEnabled( isValid )
+        self.validLayer.emit( isValid )
         self.addFeatureEvent.isValidLayer = isValid
+
+        if not isValid and not self.currentEvent is None:
+            self.currentEvent.annotationCanvas.remove()
 
         if isValid and \
         self.currentEvent == self.changeGeometryEvent and \
