@@ -181,8 +181,7 @@ class BasePolygonEvent(QObject):
             return f"Area: {s_area}\nPerimeter: {s_lenght}"
 
         if not ( isinstance( data, list ) or isinstance( data, QgsGeometry ) ):
-            raise TypeError(f"Type data '{str( type( data) )}' not implemeted")
-
+            raise TypeError(f"Type data '{str( type( data ) )}' not implemeted")
         if not isinstance( self.crs_unit['area'], QgsUnitTypes.AreaUnit ):
             raise TypeError(f"Unit measure '{QgsUnitTypes.toAbbreviatedString( self.crs_unit['area'] )}' not implemeted")
         if not isinstance( self.crs_unit['length'], QgsUnitTypes.DistanceUnit ):
@@ -220,8 +219,7 @@ class AddFeatureEvent(BasePolygonEvent):
             return self.mapCanvas.getCoordinateTransform().toMapCoordinates( x_, y_)
 
         def showMeasure():
-            points =   self.points + [ self.ctProject2Measure.transform( self.lastPoint ) ]
-            label = self.stringMeasures( points )
+            label = self.stringMeasures( self.points + [ self.ctProject2Measure.transform( self.lastPoint ) ] )
             self.annotationCanvas.setText( label, self.lastPoint )
 
         def event_mouse_move():
