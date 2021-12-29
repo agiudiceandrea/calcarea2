@@ -133,6 +133,7 @@ class BasePolygonEvent(QObject):
         }
         self.annotationCanvas = AnnotationCanvas()
         self.project =  QgsProject.instance()
+        self.project.crsChanged.connect( self.crsChanged )
         self.measure = QgsDistanceArea()
         self.measure.setSourceCrs( self.crs_unit['crs'], self.project.transformContext() )
         self.ctProject2Measure = QgsCoordinateTransform( self.project.crs(), self.crs_unit['crs'], self.project )
@@ -141,11 +142,14 @@ class BasePolygonEvent(QObject):
 
         self.objsToggleFilter = None # Need set by child class, Ex.:  ( mapCanvas, # Keyboard,  mapCanvas.viewport() # Mouse )
 
+    def __del__(self):
+        self.project.crsChanged.disconnect( self.crsChanged )
+
     def setCrsUnit(self, crs_unit):
         for k in self.crs_unit:
             self.crs_unit[ k ] = crs_unit[ k ]
         self.measure.setSourceCrs( self.crs_unit['crs'], self.project.transformContext() )
-        self.ctProject2Measure.setSourceCrs( self.crs_unit['crs'] )
+        self.ctProject2Measure.setDestinationCrs( self.crs_unit['crs'] )
 
     def enable(self):
         self.isEnabled = True
@@ -196,6 +200,11 @@ class BasePolygonEvent(QObject):
         area = data.area()
         return createString( length, area )
 
+    @pyqtSlot()
+    def crsChanged(self):
+        self.ctProject2Measure.setSourceCrs( self.project.crs() )
+
+
     @pyqtSlot(QObject, QEvent)
     def eventFilter(self, watched, event):
         pass # Virtual
@@ -209,7 +218,7 @@ class AddFeatureEvent(BasePolygonEvent):
             mapCanvas.viewport() # Mouse
         )
         self.points = []
-        self.lastPoint = None
+        self.movePoint = None
         self.isValidLayer = False
     
     @pyqtSlot(QObject, QEvent)
@@ -220,8 +229,8 @@ class AddFeatureEvent(BasePolygonEvent):
             return self.mapCanvas.getCoordinateTransform().toMapCoordinates( x_, y_)
 
         def showMeasure():
-            label = self.stringMeasures( self.points + [ self.ctProject2Measure.transform( self.lastPoint ) ] )
-            self.annotationCanvas.setText( label, self.lastPoint )
+            label = self.stringMeasures( self.points + [ self.ctProject2Measure.transform( self.movePoint ) ] )
+            self.annotationCanvas.setText( label, self.movePoint )
 
         def event_mouse_move():
             if not self.isValidLayer or not self.isEnabled:
@@ -230,7 +239,7 @@ class AddFeatureEvent(BasePolygonEvent):
             if len( self.points ) < 2:
                 return
 
-            self.lastPoint = xyCursor()
+            self.movePoint = xyCursor()
             showMeasure()
 
         def event_mouse_release():
@@ -325,6 +334,8 @@ class CalcAreaEvent(QObject):
         self.iface.currentLayerChanged.connect( self.currentLayerChanged )
 
     def __del__(self):
+        super().__del__()
+
         if self.addFeatureEvent.isEnabled:
             self.addFeatureEvent.disable()
         if self.addFeatureEvent.isEventFiltered:
