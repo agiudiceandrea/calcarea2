@@ -204,7 +204,6 @@ class BasePolygonEvent(QObject):
     def crsChanged(self):
         self.ctProject2Measure.setSourceCrs( self.project.crs() )
 
-
     @pyqtSlot(QObject, QEvent)
     def eventFilter(self, watched, event):
         pass # Virtual
@@ -220,7 +219,7 @@ class AddFeatureEvent(BasePolygonEvent):
         self.points = []
         self.movePoint = None
         self.isValidLayer = False
-    
+
     @pyqtSlot(QObject, QEvent)
     def eventFilter(self, watched, event):
         def xyCursor():
@@ -326,6 +325,7 @@ class CalcAreaEvent(QObject):
         self.addFeatureEvent = AddFeatureEvent( self.mapCanvas )
         self.changeGeometryEvent =  ChangeGeometryEvent( self.mapCanvas )
         self.currentEvent = None
+        self.checkedRun = False
 
         isValid = self._isValidLayer( self.mapCanvas.currentLayer() )
         self.addFeatureEvent.isValidLayer = isValid
@@ -334,8 +334,6 @@ class CalcAreaEvent(QObject):
         self.iface.currentLayerChanged.connect( self.currentLayerChanged )
 
     def __del__(self):
-        super().__del__()
-
         if self.addFeatureEvent.isEnabled:
             self.addFeatureEvent.disable()
         if self.addFeatureEvent.isEventFiltered:
@@ -360,6 +358,7 @@ class CalcAreaEvent(QObject):
 
         events = ( self.addFeatureEvent, self.changeGeometryEvent )
         enable( events ) if checked else disable( events )
+        self.checkedRun = checked
 
     def setCrsUnit(self, crs_unit):
         self.addFeatureEvent.setCrsUnit( crs_unit )
@@ -380,6 +379,9 @@ class CalcAreaEvent(QObject):
             if status['changeGeometry'] and self.changeGeometryEvent.isEnabled:
                 self.changeGeometryEvent.disable()
 
+        if not self.checkedRun:
+            return
+        
         self.currentEvent = None
 
         mapTool = newTool
