@@ -76,6 +76,7 @@ class AnnotationCanvas(QObject):
     def remove(self):
         if self.annot:
             self.annotationManager.removeAnnotation( self.annot )
+            self.annot = None
 
     def isVisible(self):
         if self.annot is None:
@@ -236,6 +237,7 @@ class AddFeatureEvent(BasePolygonEvent):
                 return
 
             if len( self.points ) < 2:
+                self.annotationCanvas.remove()
                 return
 
             self.movePoint = xyCursor()
@@ -247,7 +249,7 @@ class AddFeatureEvent(BasePolygonEvent):
 
             def rightPress():
                 if self.isEnabled and \
-                    len ( self.points ): # Twice clicked
+                    len ( self.points ) > 2:
                     xyPoint = self.ctProject2Measure.transform( self.points[-1],  QgsCoordinateTransform.ReverseTransform )
                     label = self.stringMeasures( self.points )
                     self.annotationCanvas.setText( label, xyPoint )
@@ -256,17 +258,31 @@ class AddFeatureEvent(BasePolygonEvent):
             if not self.isValidLayer:
                 return
 
-            btn = event.button()
+            k = event.button()
             d = {
                 Qt.LeftButton: leftPress,
                 Qt.RightButton: rightPress
             }
-            if btn in d:
-                d[ btn ]()
+            if k in d:
+                d[ k ]()
 
         def event_key_release():
-            if event.key() == Qt.Key_Escape:
+            def key_escape():
                 self.points.clear()
+                self.annotationCanvas.remove()
+
+            def key_delete():
+                if len ( self.points ) > 1:
+                    self.points.pop()
+                    self.annotationCanvas.remove()
+
+            k = event.key()
+            d = {
+                Qt.Key_Escape: key_escape,
+                Qt.Key_Delete: key_delete
+            }
+            if k in d:
+                d[ k ]()
 
         e_type = event.type()
         d = {
@@ -286,6 +302,11 @@ class ChangeGeometryEvent(BasePolygonEvent):
         # Not event filter: self.objsToggleFilter = None and self.isFiltered = False (Base class)
         self.layer = None # self.enable, self.changeLayer
         self.ctGeometry = None # self._configLayer
+        self.project.layerWillBeRemoved.connect( self.layerWillBeRemoved )
+
+    def __del__(self):
+        super().__del__()
+        self.project.layerWillBeRemoved.disconnect( self.layerWillBeRemoved )
 
     def enable(self):
         super().enable()
@@ -294,12 +315,19 @@ class ChangeGeometryEvent(BasePolygonEvent):
 
     def disable(self):
         super().disable()
-        self.layer.geometryChanged.disconnect( self.geometryChanged )
+        if not self.layer is None:
+            self.layer.geometryChanged.disconnect( self.geometryChanged )
 
     def changeLayer(self, layer):
         self.layer.geometryChanged.disconnect( self.geometryChanged )
         self.layer = layer
         self._configLayer()
+
+    @pyqtSlot(str)
+    def layerWillBeRemoved(self, layerId):
+        if not self.layer is None and layerId == self.layer.id():
+            self.layer.geometryChanged.disconnect( self.geometryChanged )
+            self.layer = None
 
     @pyqtSlot('QgsFeatureId', QgsGeometry)
     def geometryChanged(self, fid, geometry):
@@ -325,7 +353,6 @@ class CalcAreaEvent(QObject):
         self.addFeatureEvent = AddFeatureEvent( self.mapCanvas )
         self.changeGeometryEvent =  ChangeGeometryEvent( self.mapCanvas )
         self.currentEvent = None
-        self.checkedRun = False
 
         isValid = self._isValidLayer( self.mapCanvas.currentLayer() )
         self.addFeatureEvent.isValidLayer = isValid
@@ -358,7 +385,6 @@ class CalcAreaEvent(QObject):
 
         events = ( self.addFeatureEvent, self.changeGeometryEvent )
         enable( events ) if checked else disable( events )
-        self.checkedRun = checked
 
     def setCrsUnit(self, crs_unit):
         self.addFeatureEvent.setCrsUnit( crs_unit )
@@ -368,56 +394,38 @@ class CalcAreaEvent(QObject):
         return self.addFeatureEvent.crs_unit
 
     @pyqtSlot(QgsMapTool, QgsMapTool)
-    def changeMapTool(self, newTool, oldTool):
-        def disableFeatures(status):
-            if status['addFeatureEvent']:
-                if self.addFeatureEvent.isEventFiltered:
-                    self.addFeatureEvent.toggleEventFilter()
-                if self.addFeatureEvent.isEnabled:
-                    self.addFeatureEvent.annotationCanvas.remove()
+    def changeMapTool(self, newTool, oldTool=None):
+        def enableFeatureEvent(enabled=True):
+            if enabled and not self.addFeatureEvent.isEventFiltered:
+                self.addFeatureEvent.toggleEventFilter()
+                return
 
-            if status['changeGeometry'] and self.changeGeometryEvent.isEnabled:
-                self.changeGeometryEvent.disable()
+            if self.addFeatureEvent.isEventFiltered:
+                self.addFeatureEvent.toggleEventFilter()
 
-        if not self.checkedRun:
-            return
-        
+        # Remove annotations
+        for event in ( self.addFeatureEvent, self.changeGeometryEvent ):
+            event.annotationCanvas.remove()
+
         self.currentEvent = None
 
         mapTool = newTool
         if not isinstance( mapTool, QgsMapTool ):
             mapTool = self.mapCanvas.mapTool()
 
-        status = {
-            'addFeatureEvent': True,
-            'changeGeometry': True
-        }
-        if not isinstance( mapTool, QgsMapTool ):
-            disableFeatures( status )
-            return
-
-        if not mapTool.flags() == QgsMapTool.EditTool:
-            disableFeatures( status )
-            return
-
-        if not self._isValidLayer( self.mapCanvas.currentLayer() ):
-            disableFeatures( status )
-            return
+        enableFeatureEvent( False )
+        if not isinstance( mapTool, QgsMapTool ) or \
+           not mapTool.flags() == QgsMapTool.EditTool or \
+           not self._isValidLayer( self.mapCanvas.currentLayer() ):
+           return
 
         name = mapTool.action().objectName()
-        if not name == 'mActionAddFeature':
-            status['changeGeometry'] = False
-            disableFeatures( status )
-            self.currentEvent = self.changeGeometryEvent
-            if not self.changeGeometryEvent.isEnabled:
-                self.changeGeometryEvent.enable()
+        if name == 'mActionAddFeature':
+            enableFeatureEvent()
+            self.currentEvent = self.addFeatureEvent
             return
 
-        status['addFeatureEvent'] = False
-        disableFeatures( status )
-        self.currentEvent = self.addFeatureEvent
-        if not self.addFeatureEvent.isEventFiltered:
-            self.addFeatureEvent.toggleEventFilter()
+        self.currentEvent = self.changeGeometryEvent
 
     @pyqtSlot('QgsMapLayer*')
     def currentLayerChanged(self, layer):
