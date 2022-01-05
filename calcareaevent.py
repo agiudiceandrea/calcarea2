@@ -218,7 +218,6 @@ class AddFeatureEvent(BasePolygonEvent):
         super().__del__()
         del self.geomPolygon
 
-
     @pyqtSlot(QObject, QEvent)
     def eventFilter(self, watched, event):
         def xyCursor():
@@ -247,10 +246,10 @@ class AddFeatureEvent(BasePolygonEvent):
                 self.geomPolygon.add( self.ctProject2Measure.transform( xyCursor() ) )
 
             def rightPress():
-                if self.isEnabled and \
-                    self.geomPolygon.count() > 2:
-                    xyCursor = self.geomPolygon.coordinate(-2)  if self.geomPolygon.isCurve else self.geomPolygon.coordinate(-1)
-                    xyPoint = self.ctProject2Measure.transform( xyCursor, QgsCoordinateTransform.ReverseTransform )
+                if self.isEnabled and self.geomPolygon.count() > 2:
+                    if self.geomPolygon.isMiddlePoint():
+                        self.geomPolygon.pop()
+                    xyPoint = self.ctProject2Measure.transform( self.geomPolygon.coordinate(-1), QgsCoordinateTransform.ReverseTransform )
                     label = self.stringMeasures( self.geomPolygon.geometry() )
                     self.annotationCanvas.setText( label, xyPoint )
                 self.geomPolygon.clear()
@@ -312,7 +311,7 @@ class AddFeatureEvent(BasePolygonEvent):
 
             super().__init__()
             self.points = []
-            self.idCurves = []
+            self.idsMiddleCurve = []
             self.isCurve = False
             self.actionDigitizeWithCurve = getActionDigitizeWithCurve( iface )
             self.actionDigitizeWithCurve.toggled.connect( self.toggledCurve )
@@ -324,21 +323,40 @@ class AddFeatureEvent(BasePolygonEvent):
             return len( self.points )
 
         def add(self, point):
+            def populateIdCurves():
+                idPoint = len( self.points ) -1
+                if len( self.points) == 1: # Started curve
+                    return
+
+                totalIds = len( self.idsMiddleCurve )
+                if not totalIds: # Added first middle point
+                    self.idsMiddleCurve.append( idPoint )
+                    return
+
+                idPrev = self.idsMiddleCurve[ totalIds-1 ]
+                if idPrev == idPoint-1: # Finished curve
+                    return
+
+                self.idsMiddleCurve.append( idPoint )
+
             self.points.append( point )
             if self.isCurve:
-                self.idCurves.append( len( self.points ) -1 )
+                populateIdCurves()
 
         def pop(self):
             self.points.pop()
             if self.isCurve:
-                self.idCurves.pop()
+                self.idsMiddleCurve.pop()
 
         def coordinate(self, position):
             return self.points[ position ]
 
         def clear(self):
             self.points.clear()
-            self.idCurves.clear()
+            self.idsMiddleCurve.clear()
+
+        def isMiddlePoint(self):
+            return self.isCurve and len( self.idsMiddleCurve ) > 1 and self.idsMiddleCurve[-1] == ( len(self.points)-1 )
 
         def geometry(self, movePoint=None):
             def getCurvePolygon(points):
@@ -346,30 +364,12 @@ class AddFeatureEvent(BasePolygonEvent):
                     point = points[ id ] 
                     return point.toString(20).replace(',', ' ')
 
-                def getUniqueIdsCurves():
-                    total = len( self.idCurves )
-                    if total == 1:
-                        return self.idCurves
-
-                    if total % 2 == 0: # Even number
-                        return [ self.idCurves[ id ] for id in range(0, total, 2) ]
-
-                    ids = []
-                    for id in range( len( self.idCurves ) - 1):
-                        if self.idCurves[ id ] == ( self.idCurves[ id+1 ] - 1 ):
-                            ids.append( self.idCurves[ id ] )
-                    return ids
-
-                # idCurve = 0
                 idPoint = 0
                 lenPoints = len( points )
-                idCurves = getUniqueIdsCurves()
-                # lenCurves = len( idCurves )
                 l_wkt = []
                 while idPoint < lenPoints-1:
                     # Points
-                    # if idCurve == lenCurves-1 or idPoint != idCurves[ idCurve ]:
-                    if not idPoint in idCurves:
+                    if not idPoint in self.idsMiddleCurve:
                         l_str = [ toPointString( idPoint ), toPointString( idPoint + 1 ) ]
                         if idPoint == ( lenPoints - 2 ):
                             l_str.append( toPointString(0) )
@@ -392,14 +392,10 @@ class AddFeatureEvent(BasePolygonEvent):
 
                 return QgsGeometry.fromWkt( f"CurvePolygon( CompoundCurve( {','.join( l_wkt )} ) )" )
 
-            totalCurves = len( self.idCurves )
+            totalCurves = len( self.idsMiddleCurve )
             points = self.points if movePoint is None else self.points + [ movePoint ]
             if not totalCurves:
                 return QgsGeometry.fromPolygonXY( [ points ] )
-
-            if movePoint is None and totalCurves > 1 and self.isCurve: # Finished in curve
-                self.points.pop()
-                self.idCurves.pop()
 
             return getCurvePolygon( points )
 
