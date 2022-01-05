@@ -172,7 +172,7 @@ class BasePolygonEvent(QObject):
 
         self.isEventFiltered = not self.isEventFiltered
 
-    def stringMeasures(self, data):
+    def stringMeasures(self, geometry):
         def createString(length, area):
             def getString(value, unit, f_measure):
                 value_ = round( f_measure( value, unit  ), 2 )
@@ -184,21 +184,13 @@ class BasePolygonEvent(QObject):
 
             return f"Area: {s_area}\nPerimeter: {s_lenght}"
 
-        if not ( isinstance( data, list ) or isinstance( data, QgsGeometry ) ):
-            raise TypeError(f"Type data '{str( type( data ) )}' not implemeted")
         if not isinstance( self.crs_unit['area'], QgsUnitTypes.AreaUnit ):
             raise TypeError(f"Unit measure '{QgsUnitTypes.toAbbreviatedString( self.crs_unit['area'] )}' not implemeted")
         if not isinstance( self.crs_unit['length'], QgsUnitTypes.DistanceUnit ):
             raise TypeError(f"Unit measure '{QgsUnitTypes.toAbbreviatedString( self.crs_unit['length'] )}' not implemeted")
 
-        if isinstance( data, list): # List of xyPoints
-            length = self.measure.measureLine( data )
-            area = self.measure.measurePolygon( data )
-            return createString( length, area )
-        
-        #   Geometry
-        length = data.length()
-        area = data.area()
+        length = geometry.length()
+        area = geometry.area()
         return createString( length, area )
 
     @pyqtSlot()
@@ -211,15 +203,21 @@ class BasePolygonEvent(QObject):
 
 
 class AddFeatureEvent(BasePolygonEvent):
-    def __init__(self, mapCanvas):
+    def __init__(self, iface):
+        mapCanvas = iface.mapCanvas()
         super().__init__( mapCanvas )
         self.objsToggleFilter = (
             mapCanvas, # Keyboard
             mapCanvas.viewport() # Mouse
         )
-        self.points = []
+        self.geomPolygon = self.GeomPolygon( iface )
         self.movePoint = None
         self.isValidLayer = False
+
+    def __del__(self):
+        super().__del__()
+        del self.geomPolygon
+
 
     @pyqtSlot(QObject, QEvent)
     def eventFilter(self, watched, event):
@@ -229,14 +227,15 @@ class AddFeatureEvent(BasePolygonEvent):
             return self.mapCanvas.getCoordinateTransform().toMapCoordinates( x_, y_)
 
         def showMeasure():
-            label = self.stringMeasures( self.points + [ self.ctProject2Measure.transform( self.movePoint ) ] )
+            geom = self.geomPolygon.geometry( self.ctProject2Measure.transform( self.movePoint ) )
+            label = self.stringMeasures( geom )
             self.annotationCanvas.setText( label, self.movePoint )
 
         def event_mouse_move():
             if not self.isValidLayer or not self.isEnabled:
                 return
 
-            if len( self.points ) < 2:
+            if self.geomPolygon.count() < 2:
                 self.annotationCanvas.remove()
                 return
 
@@ -245,15 +244,16 @@ class AddFeatureEvent(BasePolygonEvent):
 
         def event_mouse_release():
             def leftPress():
-                self.points.append( self.ctProject2Measure.transform( xyCursor() ) )
+                self.geomPolygon.add( self.ctProject2Measure.transform( xyCursor() ) )
 
             def rightPress():
                 if self.isEnabled and \
-                    len ( self.points ) > 2:
-                    xyPoint = self.ctProject2Measure.transform( self.points[-1],  QgsCoordinateTransform.ReverseTransform )
-                    label = self.stringMeasures( self.points )
+                    self.geomPolygon.count() > 2:
+                    xyCursor = self.geomPolygon.coordinate(-2)  if self.geomPolygon.isCurve else self.geomPolygon.coordinate(-1)
+                    xyPoint = self.ctProject2Measure.transform( xyCursor, QgsCoordinateTransform.ReverseTransform )
+                    label = self.stringMeasures( self.geomPolygon.geometry() )
                     self.annotationCanvas.setText( label, xyPoint )
-                self.points.clear()
+                self.geomPolygon.clear()
 
             if not self.isValidLayer:
                 return
@@ -268,12 +268,12 @@ class AddFeatureEvent(BasePolygonEvent):
 
         def event_key_release():
             def key_escape():
-                self.points.clear()
+                self.geomPolygon.clear()
                 self.annotationCanvas.remove()
 
             def key_delete():
-                if len ( self.points ) > 1:
-                    self.points.pop()
+                if self.geomPolygon.count() > 1:
+                    self.geomPolygon.pop()
                     self.annotationCanvas.remove()
 
             k = event.key()
@@ -294,6 +294,118 @@ class AddFeatureEvent(BasePolygonEvent):
             d[ e_type ]()
         
         return False
+
+    class GeomPolygon(QObject):
+        def __init__(self, iface):
+            def getActionDigitizeWithCurve(iface):
+                name = 'advancedDigitizeToolBar'
+                toolBar = getattr( iface, name, None)
+                if toolBar is None:
+                    raise TypeError(f"QgisInterface missing '{name}' toolbar")
+                
+                name = 'mActionDigitizeWithCurve'
+                actions = [ action for action in iface.advancedDigitizeToolBar().actions() if action.objectName() == name ]
+                if not len( actions ):
+                    raise TypeError(f"QgisInterface missing '{name}' action")
+                
+                return actions[0]
+
+            super().__init__()
+            self.points = []
+            self.idCurves = []
+            self.isCurve = False
+            self.actionDigitizeWithCurve = getActionDigitizeWithCurve( iface )
+            self.actionDigitizeWithCurve.toggled.connect( self.toggledCurve )
+
+        def __del__(self):
+            self.actionDigitizeWithCurve.toggled.disconnect( self.toggledCurve )
+
+        def count(self):
+            return len( self.points )
+
+        def add(self, point):
+            self.points.append( point )
+            if self.isCurve:
+                self.idCurves.append( len( self.points ) -1 )
+
+        def pop(self):
+            self.points.pop()
+            if self.isCurve:
+                self.idCurves.pop()
+
+        def coordinate(self, position):
+            return self.points[ position ]
+
+        def clear(self):
+            self.points.clear()
+            self.idCurves.clear()
+
+        def geometry(self, movePoint=None):
+            def getCurvePolygon(points):
+                def toPointString(id):
+                    point = points[ id ] 
+                    return point.toString(20).replace(',', ' ')
+
+                def getUniqueIdsCurves():
+                    total = len( self.idCurves )
+                    if total == 1:
+                        return self.idCurves
+
+                    if total % 2 == 0: # Even number
+                        return [ self.idCurves[ id ] for id in range(0, total, 2) ]
+
+                    ids = []
+                    for id in range( len( self.idCurves ) - 1):
+                        if self.idCurves[ id ] == ( self.idCurves[ id+1 ] - 1 ):
+                            ids.append( self.idCurves[ id ] )
+                    return ids
+
+                # idCurve = 0
+                idPoint = 0
+                lenPoints = len( points )
+                idCurves = getUniqueIdsCurves()
+                # lenCurves = len( idCurves )
+                l_wkt = []
+                while idPoint < lenPoints-1:
+                    # Points
+                    # if idCurve == lenCurves-1 or idPoint != idCurves[ idCurve ]:
+                    if not idPoint in idCurves:
+                        l_str = [ toPointString( idPoint ), toPointString( idPoint + 1 ) ]
+                        if idPoint == ( lenPoints - 2 ):
+                            l_str.append( toPointString(0) )
+                        wkt = f"( {','.join( l_str )} )"
+                        l_wkt.append( wkt )
+                        idPoint += 1
+                        continue
+                    # CircularString
+                    id = 0 if idPoint == 0 else idPoint - 1 # Test for first point
+                    l_str = ( toPointString( id ), toPointString( id + 1 ), toPointString( id + 2 ) )
+                    wkt = f"CircularString( {','.join( l_str )} )"
+                    l_wkt.append( wkt )
+                    # idCurve += 1
+                    idPoint += 2
+
+                if l_wkt[-1].find('CircularString') > -1:
+                    l_str = [ toPointString( lenPoints-1 ), toPointString(0) ]
+                    wkt = f"( {','.join( l_str )} )"
+                    l_wkt.append( wkt )
+
+                return QgsGeometry.fromWkt( f"CurvePolygon( CompoundCurve( {','.join( l_wkt )} ) )" )
+
+            totalCurves = len( self.idCurves )
+            points = self.points if movePoint is None else self.points + [ movePoint ]
+            if not totalCurves:
+                return QgsGeometry.fromPolygonXY( [ points ] )
+
+            if movePoint is None and totalCurves > 1 and self.isCurve: # Finished in curve
+                self.points.pop()
+                self.idCurves.pop()
+
+            return getCurvePolygon( points )
+
+        @pyqtSlot(bool)
+        def toggledCurve(self, checked):
+            self.isCurve = checked
 
 
 class ChangeGeometryEvent(BasePolygonEvent):
@@ -350,7 +462,7 @@ class CalcAreaEvent(QObject):
         super().__init__()
         self.iface = iface
         self.mapCanvas = iface.mapCanvas()
-        self.addFeatureEvent = AddFeatureEvent( self.mapCanvas )
+        self.addFeatureEvent = AddFeatureEvent( iface )
         self.changeGeometryEvent =  ChangeGeometryEvent( self.mapCanvas )
         self.currentEvent = None
 
@@ -437,9 +549,9 @@ class CalcAreaEvent(QObject):
             self.currentEvent.annotationCanvas.remove()
 
         if isValid and \
-        self.currentEvent == self.changeGeometryEvent and \
-        self.changeGeometryEvent.isEnabled and \
-        not self.changeGeometryEvent == layer:
+           self.currentEvent == self.changeGeometryEvent and \
+           self.changeGeometryEvent.isEnabled and \
+           not self.changeGeometryEvent.layer == layer:
            self.changeGeometryEvent.changeLayer( layer)
             
     def _isValidLayer(self, layer):
