@@ -441,6 +441,7 @@ class ChangeGeometryEvent(BasePolygonEvent):
         self.layer = layer
         self._configLayer()
 
+    @pyqtSlot(QObject, QEvent)
     def eventFilter(self, watched, event):
         if event.type() == QEvent.MouseMove:
             self.annotationCanvas.remove()
