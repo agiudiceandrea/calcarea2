@@ -272,7 +272,7 @@ class AddFeatureEvent(BasePolygonEvent):
 
             def key_delete():
                 if self.geomPolygon.count() > 1:
-                    self.geomPolygon.pop()
+                    self.geomPolygon.pop(True)
                     self.annotationCanvas.remove()
 
             k = event.key()
@@ -343,9 +343,19 @@ class AddFeatureEvent(BasePolygonEvent):
             if self.isCurve:
                 populateIdCurves()
 
-        def pop(self):
+        def pop(self, key_delete=False):
             self.points.pop()
-            if self.isCurve:
+            if not key_delete and self.isCurve:
+                self.idsMiddleCurve.pop()
+                return
+
+            if not len( self.idsMiddleCurve ):
+                return
+
+            # Check idPoint end of Curve
+            idPoint = len( self.points ) - 1
+            if idPoint == ( self.idsMiddleCurve[-1] ): # Middle
+                self.points.pop() # Start
                 self.idsMiddleCurve.pop()
 
         def coordinate(self, position):

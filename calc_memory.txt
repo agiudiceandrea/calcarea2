@@ -1,3 +1,12 @@
+.) OK
+..) Apenas uma curva, seja no início ou depois, e terminando ou não em curva
+..) Curvas NÂO consecutivas, e NÂO termina com curva
+..) Curvas NÂO consecutivas, e Termina com curva
+
+.) Corrigir deleção de pontos na curva. 2022-01-04
+
+
+
 self.idCurves
 [4, 5, 6, 7, 11, 12, 13, 14]
 self.count()
