@@ -56,12 +56,12 @@ def buttonOkCancel():
 
 
 class DialogSetup(QDialog):
-    def __init__(self, parent, title, crs, length, area):
+    def __init__(self, parent, title, crs_current_layer, length, area):
         super().__init__( parent )
         self.title = title
         self.msgBar = QgsMessageBar()
 
-        lytCrs = self._layoutCrs( crs ) # self.psCrs
+        lytCrs = self._layoutCrs( crs_current_layer ) # self.psCrs
         lytUnitLength = self._layoutUnitLength( length ) # self.cmbUnitLength
         lytUnitArea = self._layoutUnitArea( area ) # self.cmbUnitArea
 
@@ -85,7 +85,7 @@ class DialogSetup(QDialog):
             'area': QgsUnitTypes.AreaUnit( self.cmbUnitArea.currentData() )
         }
 
-    def _layoutCrs(self, crs):
+    def _layoutCrs(self, crs_current_layer):
         def projectionSelectionWidget():
             p = QgsProjectionSelectionWidget()
             for opt in ( p.LayerCrs, p.ProjectCrs, p.CurrentCrs, p.DefaultCrs, p.RecentCrs ):
@@ -98,7 +98,9 @@ class DialogSetup(QDialog):
                 self._messageErrorCrs()
 
         self.psCrs = projectionSelectionWidget()
-        self.psCrs.setCrs( crs )
+        self.psCrs.setCrs( crs_current_layer['current'] )
+        if 'layer' in crs_current_layer:
+            self.psCrs.setLayerCrs( crs_current_layer['layer'] )        
         self.psCrs.crsChanged.connect( crsChanged )
 
         lyt = QVBoxLayout()

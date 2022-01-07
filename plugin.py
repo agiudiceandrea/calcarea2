@@ -111,16 +111,21 @@ class CalcAreaPlugin(QObject):
 
     @pyqtSlot(bool)
     def runSetup(self, checked):
-        settings = self.toolEvent.getCrsUnit()
+        crs_unit = self.toolEvent.getCrsUnit()
+        crs_current_layer = { 'current': crs_unit['crs'] } # Projected CRS
         layer = self.iface.mapCanvas().currentLayer()
         if not layer is None:
             crs = layer.crs()
-            if crs.isValid() and not crs.isGeographic():
-                settings['crs'] = crs
+            if crs.isValid() and not crs.isGeographic() and crs_unit['crs'] != crs:
+                crs_current_layer['layer'] = crs
 
-        args = settings.copy()
-        args['parent'] = self.iface.mainWindow()
-        args['title'] = self.pluginName
+        args = {
+            'crs_current_layer': crs_current_layer,
+            'area': crs_unit['area'],
+            'length': crs_unit['length'],
+            'parent': self.iface.mainWindow(),
+            'title': self.pluginName
+        }
         dlg = DialogSetup( **args )
         if dlg.exec_() == dlg.Accepted:
             settings = dlg.currentData()
