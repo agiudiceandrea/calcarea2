@@ -62,7 +62,7 @@ class AnnotationCanvas(QObject):
             td = QTextDocument( text )
             td.setDefaultFont( font )
             self.annot.setFrameOffsetFromReferencePointMm( QPointF(0,0) )
-            self.annot.setFrameSize( td.size() )
+            self.annot.setFrameSizeMm( td.size() / 3.7795275 )
             self.annot.setDocument( td )
 
         if not self.annot in self.annotationManager.annotations():
@@ -223,7 +223,7 @@ class AddFeatureEvent(BasePolygonEvent):
         def xyCursor():
             x_ = event.localPos().x()
             y_ = event.localPos().y()
-            return self.mapCanvas.getCoordinateTransform().toMapCoordinates( x_, y_)
+            return self.mapCanvas.getCoordinateTransform().toMapCoordinatesF( x_, y_)
 
         def showMeasure():
             geom = self.geomPolygon.geometry( self.ctProject2Measure.transform( self.movePoint ) )
@@ -297,13 +297,13 @@ class AddFeatureEvent(BasePolygonEvent):
     class GeomPolygon(QObject):
         def __init__(self, iface):
             def getActionDigitizeWithCurve(iface):
-                name = 'advancedDigitizeToolBar'
+                name = 'digitizeToolBar'
                 toolBar = getattr( iface, name, None)
                 if toolBar is None:
                     raise TypeError(f"QgisInterface missing '{name}' toolbar")
                 
-                name = 'mActionDigitizeWithCurve'
-                actions = [ action for action in iface.advancedDigitizeToolBar().actions() if action.objectName() == name ]
+                name = 'mActionAddFeature'
+                actions = [ action for action in iface.digitizeToolBar().actions() if action.objectName() == name ]
                 if not len( actions ):
                     raise TypeError(f"QgisInterface missing '{name}' action")
                 
@@ -461,7 +461,7 @@ class ChangeGeometryEvent(BasePolygonEvent):
 
         geometry.transform( self.ctGeometry )
         msg = self.stringMeasures( geometry )
-        pointXY = self.mapCanvas.getCoordinateTransform().toMapCoordinates( self.mapCanvas.mouseLastXY() )
+        pointXY = self.mapCanvas.getCoordinateTransform().toMapCoordinatesF( self.mapCanvas.mouseLastXY() )
         self.annotationCanvas.setText( msg, pointXY )
 
     def _configLayer(self):
